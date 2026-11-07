@@ -59,7 +59,7 @@ class VoiceEngineManager(
     private var lastSender: String? = null
     private var lastBody: String? = null
     var currentState = AssistantState.IDLE
-        private set(value) { field = value; callback.onStateChanged(value) }
+        private set(value) { field = value; VoiceDiagnostics.event(context, "state=$value"); callback.onStateChanged(value) }
 
     init { initRecognizer(); if (speechOutputOverride == null) tts = TextToSpeech(context, this) }
 
@@ -77,6 +77,7 @@ class VoiceEngineManager(
                 override fun onEndOfSpeech() { if (valid()) currentState = AssistantState.PROCESSING }
                 override fun onError(error: Int) {
                     if (!valid()) return
+                    VoiceDiagnostics.event(context, "recognizer_error=$error")
                     recognitionActive = false
                     timers.removeCallbacks(watchdog)
                     if (conversation.awaitingInput && retries++ < 2 && error in setOf(SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
@@ -112,12 +113,14 @@ class VoiceEngineManager(
 
     override fun onInit(status: Int) { handler.post {
         if (destroyed) return@post
+        VoiceDiagnostics.event(context, "tts_init=$status")
         if (status != TextToSpeech.SUCCESS) {
             if (tryGoogleTts()) return@post
             ttsFailure = "Govorni izlaz nije dostupan. Proverite sistemska podešavanja glasa."
             reportVoiceFailure(); return@post
         }
         val language = tts?.setLanguage(Locale.forLanguageTag("sr-RS"))
+        VoiceDiagnostics.event(context, "tts_serbian=$language")
         if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
             if (tryGoogleTts()) return@post
             ttsFailure = "Instalirajte srpski glas u sistemskim podešavanjima govora."
@@ -191,7 +194,7 @@ class VoiceEngineManager(
             }
             recognizer?.startListening(request)
             timers.postDelayed(watchdog, 20000)
-        } catch (e: Exception) { fail("Ne mogu da pokrenem mikrofon. Proverite dozvole.") }
+        } catch (e: Exception) { VoiceDiagnostics.event(context, "recognizer_start_exception=${e.javaClass.simpleName}"); fail("Ne mogu da pokrenem mikrofon. Proverite dozvole.") }
     }
     fun speak(text: String, utteranceId: String = "NaviGlasTTS") {
         if (destroyed) return
@@ -279,4 +282,3 @@ class VoiceEngineManager(
     private fun fail(message: String) { cancel(false); callback.onError(message) }
     fun destroy() { destroyed = true; cancel(false); tts?.shutdown(); tts = null }
 }
-

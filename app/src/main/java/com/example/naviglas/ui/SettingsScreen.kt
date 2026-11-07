@@ -46,6 +46,7 @@ fun SettingsScreen(
     onOpenSystemTtsSettings: () -> Unit,
     onBackClick: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Column(Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Podešavanja", color = TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -78,6 +79,13 @@ fun SettingsScreen(
         Text("Android Auto", color = AccentBlue, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Text("Dok je režim vožnje uključen, dolazne SMS poruke mogu da se pojave u Android Autu. Čitanje i glasovni odgovor vodi asistent u automobilu. Dostupnost srpskog zavisi od tog asistenta.", color = TextSecondary)
         Text("Pre polaska dozvolite prijem i slanje SMS-a i obaveštenja. Pozive prikazuje sistem automobila. NaviGlas još nema sopstvenu aktivaciju ključnom rečju preko mikrofona auta.", color = TextSecondary)
+        HorizontalDivider()
+        OutlinedButton(onClick = {
+            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("NaviGlas dijagnostika", com.example.naviglas.engine.VoiceDiagnostics.report(context)))
+            android.widget.Toast.makeText(context, "Dijagnostika je kopirana. Možete je nalepiti u razgovor.", android.widget.Toast.LENGTH_LONG).show()
+        }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Kopiraj dijagnostiku") }
+        Text("Sadrži model telefona, servis za govor i tehničke greške. Ne sadrži poruke, kontakte ni vaše glasovne komande.", color = TextSecondary)
         Spacer(Modifier.height(16.dp))
     }
 }

@@ -9,8 +9,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.naviglas.car.*
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Rule
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 
 class CarMessagingTest {
+    @get:Rule val activity = ActivityScenarioRule(MainActivity::class.java)
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     @Test fun replyCapabilitiesPersistAndAreConsumedOnce() {
         val store = CarMessageStore(context)
@@ -71,6 +74,27 @@ class CarMessagingTest {
             val info = context.packageManager.getServiceInfo(ComponentName(context, type), 0)
             assertFalse(info.exported)
         }
+    }
+    @Test fun readPendingIntentCannotBeRedirectedToAnotherSender() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS").use {
+                java.io.FileInputStream(it.fileDescriptor).use { stream -> stream.readBytes() }
+            }
+        }
+        val store = CarMessageStore(context)
+        val first = store.add("061222333")!!
+        val other = store.add("062333444")!!
+        val firstNotification = CarMessaging.build(context, first, "Prva poruka")
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.notify(first.sender, 2100, firstNotification)
+        manager.notify(other.sender, 2100, CarMessaging.build(context, other, "Druga poruka"))
+        waitFor { manager.activeNotifications.count { it.id == 2100 && it.tag in listOf(first.sender, other.sender) } == 2 }
+        val fillIn = android.content.Intent().setData(android.net.Uri.parse("navglas://${context.packageName}/${other.token}"))
+        requireNotNull(NotificationCompat.getAction(firstNotification, 1)?.actionIntent).send(context, 0, fillIn)
+        waitFor { manager.activeNotifications.none { it.id == 2100 && it.tag == first.sender } }
+        assertTrue(manager.activeNotifications.any { it.id == 2100 && it.tag == other.sender })
+        assertEquals(first, store.claim(first.token))
+        CarMessaging.dismiss(context, other)
     }
     private fun waitFor(condition: () -> Boolean) {
         val deadline = android.os.SystemClock.elapsedRealtime() + 3000

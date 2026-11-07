@@ -31,6 +31,11 @@ Skripta u test APK-u isporučuje tekst i greške kroz Android SpeechRecognizer I
 | Prekid | Zakasneli završetak govora posle otkazivanja | ne pokreće ponovo mikrofon |
 | UI | Portret, horizontalni prikaz i podešavanja | testovi i pregled stvarnih snimaka |
 | Podešavanja | Čuvanje SOS primaoca | UI test + SharedPreferences |
+| Android Auto | MessagingStyle, RemoteInput, reply/read akcije, privatnost | CarMessagingTest |
+| Android Auto | Trajno sačuvan primalac, samo jedno slanje, istek | CarMessagingTest |
+| Android Auto | Starija read/reply akcija ne uklanja noviju poruku | CarMessagingTest |
+| Android Auto | Immutable read PendingIntent ne prihvata drugi razgovor | stvarni PendingIntent i servis, bez slanja SMS-a |
+| Android Auto | Servisi nisu javno izloženi | provera instaliranog manifesta |
 
 ## Fizička provera koja ostaje otvorena
 
@@ -39,6 +44,7 @@ Skripta u test APK-u isporučuje tekst i greške kroz Android SpeechRecognizer I
 - Stvarni poziv, dolazni poziv, SMS operatera, isporuka i dve SIM kartice.
 - Zaključan ekran, isključivanje ekrana, Samsung upravljanje baterijom i duži rad.
 - Prekidi tokom stvarne navigacije i istovremeno reprodukovanje muzike.
+- Android Auto / DHU: projekcija, čitanje, glasovni odgovor i jezik host asistenta.
+- Potpuno upravljanje bez dodira / stalna aktivacija ključnom rečju: još nije implementirano.
 
 Bez povezanog fizičkog uređaja ove stavke nisu potvrđene. Ne proglašavati ih uspešnim na osnovu UI testova ili simuliranog pružaoca prepoznavanja.
-
