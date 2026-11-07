@@ -33,17 +33,17 @@ class CarMessagingTest {
         val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)!!
         assertEquals("Stižem za deset minuta.", style.messages.single().text.toString())
         assertEquals(message.sender, style.messages.single().person!!.name.toString())
-        val reply = NotificationCompat.getAction(notification, 0)
+        val reply = requireNotNull(NotificationCompat.getAction(notification, 0))
         assertEquals(NotificationCompat.Action.SEMANTIC_ACTION_REPLY, reply.semanticAction)
         assertFalse(reply.showsUserInterface)
         assertEquals(CarMessaging.INPUT, reply.remoteInputs!!.single().resultKey)
-        val read = NotificationCompat.getAction(notification, 1)
+        val read = requireNotNull(NotificationCompat.getAction(notification, 1))
         assertEquals(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ, read.semanticAction)
         assertFalse(read.showsUserInterface)
         assertEquals(Notification.VISIBILITY_PRIVATE, notification.visibility)
         if (Build.VERSION.SDK_INT >= 31) {
-            assertFalse(reply.actionIntent.isImmutable)
-            assertTrue(read.actionIntent.isImmutable)
+            assertFalse(requireNotNull(reply.actionIntent).isImmutable)
+            assertTrue(requireNotNull(read.actionIntent).isImmutable)
         }
     }
     @Test fun readDoesNotConsumeReplyAndCannotHideNewerMessage() {

@@ -74,7 +74,10 @@ fun SettingsScreen(
         OutlinedButton(onClick = onOpenAppSettings, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Dozvole aplikacije") }
         OutlinedButton(onClick = onOpenOverlaySettings, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Dozvoli mehur preko mape") }
         Text("Slušanje počinje dodirom mikrofona ili mehura. Aktivacija ključnom rečju i automatsko pokretanje preko Bluetooth-a nisu uključeni u ovu verziju.", color = TextSecondary)
+        HorizontalDivider()
+        Text("Android Auto", color = AccentBlue, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text("Dok je režim vožnje uključen, dolazne SMS poruke mogu da se pojave u Android Autu. Čitanje i glasovni odgovor vodi asistent u automobilu. Dostupnost srpskog zavisi od tog asistenta.", color = TextSecondary)
+        Text("Pre polaska dozvolite prijem i slanje SMS-a i obaveštenja. Pozive prikazuje sistem automobila. NaviGlas još nema sopstvenu aktivaciju ključnom rečju preko mikrofona auta.", color = TextSecondary)
         Spacer(Modifier.height(16.dp))
     }
 }
-
