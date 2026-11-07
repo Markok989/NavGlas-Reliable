@@ -167,6 +167,7 @@ object ContactMatcher {
      * Očitava kontakte iz telefona i grupisanje više brojeva po kontaktu.
      */
     fun loadContactsFromPhone(context: Context): List<Contact> {
+        if (context.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return emptyList()
         val map = mutableMapOf<String, Pair<String, MutableList<String>>>()
         val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
         val projection = arrayOf(

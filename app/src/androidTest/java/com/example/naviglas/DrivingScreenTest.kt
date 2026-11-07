@@ -3,6 +3,7 @@ package com.example.naviglas
 import android.Manifest
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -45,6 +46,9 @@ class DrivingScreenTest {
     @Test fun landscapeKeepsEssentialControls() {
         ready()
         compose.runOnIdle { compose.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+        compose.waitUntil(15000) {
+            compose.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        }
         ready()
         compose.onNodeWithContentDescription("Podešavanja").assertExists()
         compose.onNodeWithContentDescription("Pokreni slušanje").assertExists()

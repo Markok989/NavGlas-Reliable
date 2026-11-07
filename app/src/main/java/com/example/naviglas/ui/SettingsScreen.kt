@@ -48,7 +48,7 @@ fun SettingsScreen(
 ) {
     Column(Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Podešavanja", color = TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text("Podešavanja", color = TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             TextButton(onClick = onBackClick) { Text("Sačuvaj") }
         }
         Text("Glas asistenta", color = AccentBlue, fontSize = 20.sp, fontWeight = FontWeight.Bold)

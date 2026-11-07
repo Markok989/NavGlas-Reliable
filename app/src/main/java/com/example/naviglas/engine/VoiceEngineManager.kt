@@ -26,11 +26,13 @@ interface VoiceEngineCallback {
 
 class VoiceEngineManager(private val context: Context, private val callback: VoiceEngineCallback) : TextToSpeech.OnInitListener {
     private val handler = Handler(Looper.getMainLooper())
+    private val timers = Handler(Looper.getMainLooper())
     private val conversation = ConversationController()
     private val audio = AudioRoutingManager(context)
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var ttsFailure: String? = null
     private var destroyed = false
     private var recognitionActive = false
     private var recognitionGeneration = 0
@@ -60,9 +62,9 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
                 override fun onError(error: Int) {
                     if (!valid()) return
                     recognitionActive = false
-                    handler.removeCallbacks(watchdog)
+                    timers.removeCallbacks(watchdog)
                     if (conversation.awaitingInput && retries++ < 2 && error in setOf(SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
-                        handler.postDelayed({ listen() }, 600)
+                        timers.postDelayed({ listen() }, 600)
                     } else fail(when (error) {
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Dozvolite pristup mikrofonu u podešavanjima."
                         SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Proverite internet vezu i pokušajte ponovo."
@@ -74,7 +76,7 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
                 override fun onResults(results: Bundle?) {
                     if (!valid()) return
                     recognitionActive = false
-                    handler.removeCallbacks(watchdog)
+                    timers.removeCallbacks(watchdog)
                     retries = 0
                     val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                     callback.onSpeechRecognized(text)
@@ -90,17 +92,21 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
 
     override fun onInit(status: Int) { handler.post {
         if (destroyed) return@post
-        if (status != TextToSpeech.SUCCESS) { fail("Govorni izlaz nije dostupan. Proverite sistemska podešavanja glasa."); return@post }
+        if (status != TextToSpeech.SUCCESS) {
+            ttsFailure = "Govorni izlaz nije dostupan. Proverite sistemska podešavanja glasa."
+            fail(ttsFailure!!); return@post
+        }
         val language = tts?.setLanguage(Locale.forLanguageTag("sr-RS"))
         if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
-            fail("Instalirajte srpski glas u sistemskim podešavanjima govora.")
+            ttsFailure = "Instalirajte srpski glas u sistemskim podešavanjima govora."
+            fail(ttsFailure!!)
             return@post
         }
         ttsReady = true
         tts?.setSpeechRate(rate); tts?.setPitch(pitch)
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) { handler.post { if (!destroyed && utteranceId == speechId.toString()) currentState = AssistantState.SPEAKING } }
-            override fun onDone(utteranceId: String?) { handler.postDelayed({
+            override fun onDone(utteranceId: String?) { timers.postDelayed({
                 if (!destroyed && utteranceId == speechId.toString()) {
                     if (conversation.awaitingInput) listen() else { currentState = AssistantState.IDLE; releaseAudio() }
                 }
@@ -134,13 +140,18 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "sr-RS")
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             })
-            handler.postDelayed(watchdog, 20000)
+            timers.postDelayed(watchdog, 20000)
         } catch (e: Exception) { fail("Ne mogu da pokrenem mikrofon. Proverite dozvole.") }
     }
     fun speak(text: String, utteranceId: String = "NaviGlasTTS") {
         if (destroyed) return
         callback.onFeedback(text)
-        if (!ttsReady) { queuedSpeech = text; callback.onError("Glas se priprema. Ako ne progovori, proverite srpski TTS glas."); return }
+        if (!ttsReady) {
+            ttsFailure?.let { fail(it); return }
+            queuedSpeech = text
+            callback.onError("Glas se priprema. Ako ne progovori, proverite srpski TTS glas.")
+            return
+        }
         try {
             if (!audio.requestAudioFocus { handler.post { cancel() } }) { fail("Zvuk trenutno nije dostupan. Pokušajte ponovo."); return }
             val id = (++speechId).toString()
@@ -170,7 +181,7 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
         }
     }
     fun cancel(announce: Boolean = true) {
-        handler.removeCallbacksAndMessages(null)
+        timers.removeCallbacksAndMessages(null)
         queuedSpeech = null; speechId++; recognitionActive = false; recognitionGeneration++
         recognizer?.destroy(); recognizer = null
         tts?.stop(); conversation.cancel(); releaseAudio()

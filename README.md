@@ -1,41 +1,68 @@
-# NavGlas Reliable
+# NaviGlas Reliable
 
-Android glasovni asistent na srpskom, preuzet iz postojećeg NavGlas projekta.
+Glasovni Android asistent na srpskom, sa jednostavnim ekranom za vožnju.
+Razvojna verzija **1.1.0-dev**. Podržava Android 8.0 (API 26) i noviji.
 
-## Status
+## Šta radi
 
-Razvojna verzija. APK i rad na Samsung Galaxy S24 još nisu verifikovani.
-Prvobitni projekat u D:\Android\NavGlas ostaje neizmenjen.
+- Pozivanje kontakta ili broja uz izričitu potvrdu.
+- Diktiranje SMS-a, čitanje pripremljene poruke, izmena i potvrda slanja.
+- Razlikovanje kontakata sa istim imenom i izbor jednog od više brojeva.
+- Brzi odgovor poslednjem pošiljaocu; nema rezervnog slanja prvom kontaktu.
+- SOS izabranom primaocu, uz potvrdu i poslednju lokaciju mlađu od pet minuta, ako je dostupna.
+- Komande za vreme, lokaciju, čitanje poslednjeg SMS-a pristiglog tokom rada i upravljanje dolaznim pozivom gde Android dozvoljava.
+- Mehur preko navigacije i pločica u brzim podešavanjima.
 
-## Prve izmene
+Glasovni servis je jedini vlasnik mikrofona i TTS-a. Ekran posmatra stvarno stanje servisa.
+Slušanje se pokreće dodirom; nema stalnog osluškivanja ključne reči niti automatskog pokretanja mikrofona pri Bluetooth povezivanju.
+Zvuk koristi rutu koju je izabrao Android. Stvarni Bluetooth uređaj zahteva zaseban praktičan test.
 
-- Samo izričita potvrda odobrava poziv ili SMS; otkazivanje prekida dijalog.
-- Nejasan izbor ne odabira automatski prvi kontakt ili broj.
-- Izabrani broj prenosi se do izvršavanja poziva i poruke.
-- Greške slušanja imaju najviše dva ponavljanja; gašenje uklanja zakazane zadatke.
-- SOS ne bira prvi kontakt iz imenika. Bez određenog primaoca odbija slanje.
-- Poruka o SMS-u razlikuje predaju telefonu od potvrđene isporuke.
-- Manifest uključuje vidljivost govornih servisa.
+## Primeri
 
-## Provera
+- „Pozovi Marka” → izbor kontakta/broja ako je potrebno → „potvrdi”.
+- „Pošalji poruku Ani da stižem za deset minuta” → pregled → „potvrdi” ili „promeni”.
+- „Otkaži” prekida razgovor bez izvršavanja.
+- „Koliko je sati”, „Gde sam”, „Pročitaj poruku opet”.
 
-Standardna komanda: `gradlew.bat :app:testDebugUnitTest :app:assembleDebug`.
-U izolovanom okruženju Gradle 9.6 prijavljuje radni direktorijum kao neupisiv iako pojedinačni upis uspeva.
-Odvojena kompilacija engine paketa i JUnit testovi koriste lokalni Kotlin 2.2.10 i Android 37.0 API.
-To ne zamenjuje Gradle build koji je podešen na Kotlin 2.0.21, Android testove ili proveru na telefonu.
+## Prvo pokretanje
 
-## Sledeći prioriteti
+1. Dozvolite mikrofon. Kontakti, pozivi, SMS i lokacija potrebni su samo za odgovarajuće radnje.
+2. U sistemskim podešavanjima govora instalirajte/podesite srpski TTS glas i poslušajte primer.
+3. U podešavanjima aplikacije unesite SOS primaoca i tekst brzog odgovora.
+4. Ako imate dve SIM kartice, podesite podrazumevanu karticu za SMS.
+5. Za mehur posebno dozvolite prikaz preko drugih aplikacija.
 
-1. Proveriti pun build i usaglasiti verzije alata.
-2. Uvesti jedinstveno stanje razgovora i identitet kontakta sa brojem kroz ceo tok.
-3. Sačuvati i proveriti SOS primaoca; izbaciti opasne rezervne izbore.
-4. Dodati potvrde slanja i isporuke SMS-a, duge poruke i izbor SIM kartice.
-5. Proveriti dozvole, pokretanje servisa u pozadini i Bluetooth na S24.
-6. Povezati stanje servisa sa ekranom i prikazati greške korisniku.
-7. Smanjiti dozvole i preispitati čitanje poruka naglas i cloud obradu.
+Poslednji SMS se čuva samo u memoriji aktivnog servisa. Njegovo telo se ne čita automatski naglas.
+Podaci o kontaktima i porukama se ne šalju posebnom cloud servisu iz aplikacije.
+Sistemsko prepoznavanje govora može koristiti internet i zavisi od instaliranog pružaoca usluge.
+SMS status razlikuje predaju telefonu, rezultat slanja i neproverenu isporuku primaocu.
+SOS nije zamena za hitne službe. Lokacija se ne prikazuje kao trenutna ako je zastarela.
 
-## Izvori
+## Build i testovi
+
+Potreban je JDK 25, Android SDK 37.0, Build Tools 37.0.0 i SDK putanja u lokalnom `local.properties` ili `ANDROID_HOME`.
+
+```sh
+./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+./gradlew connectedDebugAndroidTest
+```
+
+Na Windowsu koristite `gradlew.bat`. `local.properties`, keystore fajlovi i build izlazi ne pripadaju repozitorijumu.
+GitHub Actions pokreće unit testove, lint, debug build i emulator testove, i čuva APK, izveštaje i snimke ekrana kao artefakte.
+Proverite rezultat poslednjeg workflow pokretanja za odgovarajući commit; postojanje workflow fajla nije dokaz uspešnog testa.
+
+## Ograničenja verifikacije
+
+Original u `D:\Android\NavGlas` ostaje neizmenjen.
+Ovo nije izdanje za Google Play. SMS/Call Log i druge osetljive mogućnosti podležu posebnim pravilima distribucije.
+Stvarni pozivi, SMS operatera, srpsko prepoznavanje govora u buci i Bluetooth u automobilu zahtevaju proveru na fizičkom S24.
+Testovi na emulatoru ne dokazuju te mogućnosti.
+
+## Tehnički izvori
 
 - https://developer.android.com/reference/android/speech/SpeechRecognizer
 - https://developer.android.com/reference/android/speech/tts/TextToSpeech
 - https://developer.android.com/reference/android/telephony/SmsManager
+- https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start
+- https://developer.android.com/develop/ui/compose/testing
+

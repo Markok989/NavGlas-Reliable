@@ -15,6 +15,10 @@ object SmsSender {
             Handler(Looper.getMainLooper()).post { send(context, number, text, onResult) }
             return
         }
+        try { sendOnMain(context, number, text, onResult) }
+        catch (e: Exception) { onResult("SMS nije dostupan. Proverite dozvole, SIM karticu i podršku telefona.") }
+    }
+    private fun sendOnMain(context: Context, number: String, text: String, onResult: (String) -> Unit) {
         val app = context.applicationContext
         val manager = if (Build.VERSION.SDK_INT >= 31) app.getSystemService(SmsManager::class.java) else {
             @Suppress("DEPRECATION") SmsManager.getDefault()

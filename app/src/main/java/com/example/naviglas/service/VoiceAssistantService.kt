@@ -82,11 +82,14 @@ class VoiceAssistantService : Service(), VoiceEngineCallback {
     override fun onError(errorMessage: String) { feedback = errorMessage; observers.toList().forEach { it.onError(errorMessage) } }
     override fun onCommandParsed(result: ParsedCommandResult) { scope.launch {
         val contacts = withContext(Dispatchers.IO) { ContactMatcher.loadContactsFromPhone(this@VoiceAssistantService) }
-        withContext(Dispatchers.IO) {
-            ActionExecutor.execute(this@VoiceAssistantService, result, contacts) { message ->
-                scope.launch { engine.speak(message) }
+        try {
+            withContext(Dispatchers.IO) {
+                ActionExecutor.execute(this@VoiceAssistantService, result, contacts) { message ->
+                    scope.launch { engine.speak(message) }
+                }
             }
-        }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { onError("Radnja nije mogla da se izvrši. Proverite dozvole aplikacije.") }
     } }
     override fun onDestroy() {
         isRunning = false
