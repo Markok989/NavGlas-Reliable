@@ -19,7 +19,9 @@ class DrivingScreenTest {
     @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
     private fun ready() {
-        compose.waitUntil(15000) { compose.onAllNodesWithContentDescription("Pokreni slušanje").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(15000) {
+            compose.onAllNodes(hasContentDescription("Pokreni slušanje") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
     }
     private fun screenshot(name: String) {
         compose.waitForIdle()

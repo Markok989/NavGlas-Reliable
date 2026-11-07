@@ -171,6 +171,16 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
         val command = reply.command
         when (command?.action) {
             CommandAction.READ_LAST_SMS -> speak(lastBody?.let { "Poslednja poruka od $lastSender glasi: $it" } ?: "Nema nedavno pristiglih poruka.")
+            CommandAction.QUICK_ETA -> {
+                val sender = lastSender
+                if (sender.isNullOrBlank()) speak("Nema poslednjeg pošiljaoca. Recite pošalji poruku i ime kontakta.")
+                else {
+                    val message = context.getSharedPreferences("NaviGlasPrefs", Context.MODE_PRIVATE)
+                        .getString("QUICK_ETA", command.messageText).orEmpty()
+                    handle(conversation.submit(command.copy(action = CommandAction.SEND_SMS,
+                        contactName = sender, recipientQuery = sender, messageText = message)))
+                }
+            }
             CommandAction.SEND_SOS -> {
                 val recipient = context.getSharedPreferences("NaviGlasPrefs", Context.MODE_PRIVATE).getString("SOS_NUMBER", "").orEmpty()
                 if (command.phoneNumber == null) handle(conversation.submit(command.copy(contactName = recipient, recipientQuery = recipient)))
