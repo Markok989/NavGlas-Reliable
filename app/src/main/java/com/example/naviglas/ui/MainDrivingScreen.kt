@@ -27,6 +27,7 @@ fun MainDrivingScreen(
     currentState: AssistantState, recognizedText: String, spokenFeedback: String,
     isServiceRunning: Boolean, selectedNavAppName: String,
     onMicClick: () -> Unit, onCancelClick: () -> Unit,
+    confirmationAvailable: Boolean = false, onConfirmClick: () -> Unit = {},
     onQuickEtaClick: () -> Unit, onSosClick: () -> Unit,
     onOpenNavAppClick: () -> Unit, onSettingsClick: () -> Unit
 ) {
@@ -49,6 +50,12 @@ fun MainDrivingScreen(
                 }
                 IconButton(onClick = onSettingsClick, modifier = Modifier.size(52.dp)) {
                     Icon(Icons.Default.Settings, "Podešavanja", tint = TextPrimary)
+                }
+            }
+            if (confirmationAvailable) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = onConfirmClick, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("Potvrdi radnju") }
+                    OutlinedButton(onClick = onCancelClick, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("Otkaži") }
                 }
             }
             if (landscape) {

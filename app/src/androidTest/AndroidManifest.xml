@@ -4,9 +4,10 @@
     <application>
         <!-- Only the test APK contains this provider, never the application APK. -->
         <service android:name="com.example.naviglas.testsupport.ScriptedRecognitionService"
-            android:exported="true" android:permission="android.permission.BIND_SPEECH_RECOGNITION_SERVICE">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.speech.RecognitionService" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </service>
     </application>

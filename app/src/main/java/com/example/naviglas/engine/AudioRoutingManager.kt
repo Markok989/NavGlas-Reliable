@@ -27,8 +27,5 @@ class AudioRoutingManager(context: Context) {
         return held
     }
     fun abandonAudioFocus() { request?.let { manager.abandonAudioFocusRequest(it) }; held = false }
-    // Compatibility for the unused cloud voice adapter; route selection belongs to Android.
-    fun enableCarAudioMode(preferBluetooth: Boolean = true) { }
-    fun disableCarAudioMode() { abandonAudioFocus() }
 }
 

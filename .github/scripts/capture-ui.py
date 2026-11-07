@@ -17,7 +17,7 @@ def wait_for(description):
             adb("shell", "uiautomator", "dump", "/sdcard/navglas-window.xml")
             root = ET.fromstring(adb("shell", "cat", "/sdcard/navglas-window.xml"))
             for node in root.iter("node"):
-                if node.get("content-desc") == description and node.get("enabled") == "true":
+                if (node.get("content-desc") == description or node.get("text") == description) and node.get("enabled") == "true":
                     return node
         except (subprocess.CalledProcessError, ET.ParseError):
             pass
@@ -28,7 +28,15 @@ def screenshot(name):
     (output / name).write_bytes(adb("exec-out", "screencap", "-p", binary=True))
 
 adb("install", "-r", "app/build/outputs/apk/debug/app-debug.apk")
-for permission in ("RECORD_AUDIO", "READ_CONTACTS", "POST_NOTIFICATIONS"):
+adb("shell", "pm", "clear", "com.example.naviglas")
+adb("shell", "am", "start", "-W", "-n", "com.example.naviglas/.MainActivity")
+wait_for("Podesi dozvole")
+screenshot("onboarding-no-permissions.png")
+adb("shell", "am", "force-stop", "com.example.naviglas")
+permissions = ["RECORD_AUDIO", "READ_CONTACTS"]
+if int(adb("shell", "getprop", "ro.build.version.sdk").strip()) >= 33:
+    permissions.append("POST_NOTIFICATIONS")
+for permission in permissions:
     adb("shell", "pm", "grant", "com.example.naviglas", f"android.permission.{permission}")
 adb("shell", "input", "keyevent", "KEYCODE_WAKEUP")
 adb("shell", "wm", "dismiss-keyguard")

@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             assistantService = null; voiceEngineManager = null; serviceConnected = false
+            confirmationAvailable = false
         }
     }
     private var overlayVoiceWidget: OverlayVoiceWidget? = null
@@ -73,6 +74,7 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
     private var currentState by mutableStateOf(AssistantState.IDLE)
     private var recognizedText by mutableStateOf("")
     private var spokenFeedback by mutableStateOf("")
+    private var confirmationAvailable by mutableStateOf(false)
     private var hasAllPermissions by mutableStateOf(false)
     private var isSettingsOpen by mutableStateOf(false)
 
@@ -265,6 +267,8 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
                             selectedNavAppName = currentNavName,
                             onMicClick = { voiceEngineManager?.startListening() },
                             onCancelClick = { voiceEngineManager?.cancel() },
+                            confirmationAvailable = confirmationAvailable,
+                            onConfirmClick = { voiceEngineManager?.confirmPending() },
                             onQuickEtaClick = {
                                 val target = voiceEngineManager?.getLastSmsSender()
                                 if (target.isNullOrBlank()) spokenFeedback = "Nema poslednjeg pošiljaoca. Recite: pošalji poruku i ime kontakta."
@@ -483,6 +487,7 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
 
     override fun onCommandParsed(result: ParsedCommandResult) { voiceEngineManager?.submitCommand(result) }
     override fun onFeedback(text: String) { spokenFeedback = text }
+    override fun onConfirmationChanged(available: Boolean) { confirmationAvailable = available }
     override fun onServiceStopped() {
         assistantService?.removeObserver(this)
         if (isBound) { unbindService(connection); isBound = false }

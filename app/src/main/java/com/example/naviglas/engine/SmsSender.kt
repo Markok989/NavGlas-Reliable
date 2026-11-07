@@ -11,6 +11,10 @@ import java.util.UUID
 /** Reports radio send results without claiming delivery. */
 object SmsSender {
     fun send(context: Context, number: String, text: String, onResult: (String) -> Unit) {
+        if (context.checkSelfPermission(android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            onResult("Nedostaje dozvola za slanje SMS poruka. Omogućite je u dozvolama aplikacije.")
+            return
+        }
         if (Looper.myLooper() != Looper.getMainLooper()) {
             Handler(Looper.getMainLooper()).post { send(context, number, text, onResult) }
             return
@@ -30,7 +34,7 @@ object SmsSender {
         val parts = manager.divideMessage(text)
         val action = "${app.packageName}.SMS_SENT.${UUID.randomUUID()}"
         val handler = Handler(Looper.getMainLooper())
-        val received = mutableSetOf<Int>()
+        val tracker = SmsSendTracker(parts.size)
         var registered = false
         var finished = false
         lateinit var receiver: BroadcastReceiver
@@ -44,10 +48,10 @@ object SmsSender {
         receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 val index = intent?.getIntExtra("part", -1) ?: return
-                if (index !in parts.indices || !received.add(index)) return
-                if (resultCode != Activity.RESULT_OK) {
+                val outcome = tracker.record(index, resultCode == Activity.RESULT_OK)
+                if (outcome == SmsSendOutcome.FAILED) {
                     finish("Slanje SMS-a nije potvrđeno (kod $resultCode). Proverite mrežu i kredit. Proverite poruke pre ponovnog slanja.")
-                } else if (received.size == parts.size) {
+                } else if (outcome == SmsSendOutcome.SENT) {
                     finish("SMS je poslat mreži. Isporuka primaocu nije potvrđena.")
                 }
             }
@@ -59,7 +63,7 @@ object SmsSender {
             val intents = ArrayList(parts.indices.map { index ->
                 PendingIntent.getBroadcast(app, index, Intent(action).setPackage(app.packageName).putExtra("part", index), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             })
-            handler.postDelayed({ finish("Nije stigla potvrda slanja SMS-a. Proverite aplikaciju za poruke pre ponovnog slanja.") }, 45000)
+            handler.postDelayed({ if (tracker.timeout() == SmsSendOutcome.UNKNOWN) finish("Nije stigla potvrda slanja SMS-a. Proverite aplikaciju za poruke pre ponovnog slanja.") }, 45000)
             manager.sendMultipartTextMessage(number, null, parts, intents, null)
             onResult("SMS je predat telefonu. Čekam potvrdu slanja.")
         } catch (e: SecurityException) { finish("Nedostaje dozvola za slanje SMS poruka.") }

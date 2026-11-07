@@ -20,6 +20,7 @@ class VoiceAssistantService : Service(), VoiceEngineCallback {
     private val observers = mutableSetOf<VoiceEngineCallback>()
     private var feedback = "Dodirnite mikrofon i izgovorite komandu."
     private var recognized = ""
+    private var confirmationAvailable = false
     private var foreground = false
     inner class LocalBinder : Binder() { val service get() = this@VoiceAssistantService }
     override fun onBind(intent: Intent?): IBinder = LocalBinder()
@@ -35,6 +36,7 @@ class VoiceAssistantService : Service(), VoiceEngineCallback {
     fun addObserver(observer: VoiceEngineCallback) {
         observers.add(observer)
         observer.onStateChanged(engine.currentState); observer.onSpeechRecognized(recognized); observer.onFeedback(feedback)
+        observer.onConfirmationChanged(confirmationAvailable)
     }
     fun removeObserver(observer: VoiceEngineCallback) { observers.remove(observer) }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -79,6 +81,7 @@ class VoiceAssistantService : Service(), VoiceEngineCallback {
     override fun onStateChanged(state: AssistantState) { observers.toList().forEach { it.onStateChanged(state) } }
     override fun onSpeechRecognized(text: String) { recognized = text; observers.toList().forEach { it.onSpeechRecognized(text) } }
     override fun onFeedback(text: String) { feedback = text; observers.toList().forEach { it.onFeedback(text) } }
+    override fun onConfirmationChanged(available: Boolean) { confirmationAvailable = available; observers.toList().forEach { it.onConfirmationChanged(available) } }
     override fun onError(errorMessage: String) { feedback = errorMessage; observers.toList().forEach { it.onError(errorMessage) } }
     override fun onCommandParsed(result: ParsedCommandResult) { scope.launch {
         val contacts = withContext(Dispatchers.IO) { ContactMatcher.loadContactsFromPhone(this@VoiceAssistantService) }

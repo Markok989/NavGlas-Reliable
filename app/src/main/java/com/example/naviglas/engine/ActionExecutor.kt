@@ -75,6 +75,10 @@ object ActionExecutor {
 
         when (command.action) {
             CommandAction.CALL -> {
+                if (context.checkSelfPermission(android.Manifest.permission.CALL_PHONE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    onResult("Nedostaje dozvola za pozive. Omogućite je u dozvolama aplikacije.")
+                    return
+                }
                 val phoneNumber = PhoneNumbers.normalize(command.phoneNumber.orEmpty())
                 if (!phoneNumber.isNullOrBlank()) {
                     val intent = Intent(Intent.ACTION_CALL).apply {

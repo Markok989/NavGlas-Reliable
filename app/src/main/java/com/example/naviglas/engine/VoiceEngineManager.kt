@@ -23,6 +23,7 @@ interface VoiceEngineCallback {
     fun onError(errorMessage: String)
     fun onFeedback(text: String) {}
     fun onServiceStopped() {}
+    fun onConfirmationChanged(available: Boolean) {}
 }
 
 /** Injectable speech output lets integration tests exercise the real recognizer lifecycle. */
@@ -46,6 +47,7 @@ class VoiceEngineManager(
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var ttsFailure: String? = null
+    private var triedGoogleTts = false
     private var destroyed = false
     private var recognitionActive = false
     private var recognitionGeneration = 0
@@ -95,6 +97,7 @@ class VoiceEngineManager(
                     recognitionActive = false
                     timers.removeCallbacks(watchdog)
                     retries = 0
+                    currentState = AssistantState.PROCESSING
                     val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                     callback.onSpeechRecognized(text)
                     refreshSosRecipient()
@@ -110,16 +113,19 @@ class VoiceEngineManager(
     override fun onInit(status: Int) { handler.post {
         if (destroyed) return@post
         if (status != TextToSpeech.SUCCESS) {
+            if (tryGoogleTts()) return@post
             ttsFailure = "Govorni izlaz nije dostupan. Proverite sistemska podešavanja glasa."
-            fail(ttsFailure!!); return@post
+            reportVoiceFailure(); return@post
         }
         val language = tts?.setLanguage(Locale.forLanguageTag("sr-RS"))
         if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
+            if (tryGoogleTts()) return@post
             ttsFailure = "Instalirajte srpski glas u sistemskim podešavanjima govora."
-            fail(ttsFailure!!)
+            reportVoiceFailure()
             return@post
         }
         ttsReady = true
+        ttsFailure = null
         tts?.setSpeechRate(rate); tts?.setPitch(pitch)
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) { handler.post { if (!destroyed && utteranceId == speechId.toString()) currentState = AssistantState.SPEAKING } }
@@ -129,10 +135,33 @@ class VoiceEngineManager(
                     if (conversation.awaitingInput) listen() else currentState = AssistantState.IDLE
                 }
             }, 450) }
-            override fun onError(utteranceId: String?) { handler.post { if (!destroyed && utteranceId == speechId.toString()) fail("Glas nije mogao da se reprodukuje. Radnja je otkazana.") } }
+            override fun onError(utteranceId: String?) { handler.post { if (!destroyed && utteranceId == speechId.toString()) showWithoutVoice(lastFeedback, "Glas nije mogao da se reprodukuje.") } }
         })
         queuedSpeech?.let { queuedSpeech = null; speak(it) }
     } }
+
+    private var lastFeedback = ""
+    private fun tryGoogleTts(): Boolean {
+        if (triedGoogleTts || speechOutputOverride != null) return false
+        triedGoogleTts = true
+        return try {
+            if (tts?.engines?.none { it.name == "com.google.android.tts" } != false) false
+            else { tts?.shutdown(); tts = TextToSpeech(context, this, "com.google.android.tts"); true }
+        } catch (_: Exception) { false }
+    }
+    private fun reportVoiceFailure() {
+        val text = queuedSpeech
+        queuedSpeech = null
+        if (text != null) showWithoutVoice(text, ttsFailure.orEmpty())
+        else callback.onError(ttsFailure.orEmpty())
+    }
+    private fun showWithoutVoice(text: String, reason: String) {
+        speechId++
+        releaseAudio()
+        if (!recognitionActive) currentState = AssistantState.IDLE
+        callback.onFeedback("$text\n\n$reason Dodirnite mikrofon za odgovor ili upotrebite dugme za potvrdu ako je prikazano.")
+        callback.onConfirmationChanged(conversation.awaitingConfirmation)
+    }
 
     fun updateContacts(contacts: List<Contact>) { conversation.contacts = contacts }
     fun updateTtsSettings(speechRate: Float, pitch: Float) {
@@ -166,20 +195,21 @@ class VoiceEngineManager(
     }
     fun speak(text: String, utteranceId: String = "NaviGlasTTS") {
         if (destroyed) return
+        lastFeedback = text
         callback.onFeedback(text)
         speechOutputOverride?.let { output ->
             val id = ++speechId
             currentState = AssistantState.SPEAKING
-            output.speak(text) { handler.post {
+            try { output.speak(text) { handler.post {
                 if (!destroyed && id == speechId) {
                     releaseAudio()
                     if (conversation.awaitingInput) listen() else currentState = AssistantState.IDLE
                 }
-            } }
+            } } } catch (_: Exception) { showWithoutVoice(text, "Govorni izlaz nije dostupan.") }
             return
         }
         if (!ttsReady) {
-            ttsFailure?.let { fail(it); return }
+            ttsFailure?.let { showWithoutVoice(text, it); return }
             queuedSpeech = text
             callback.onError("Glas se priprema. Ako ne progovori, proverite srpski TTS glas.")
             return
@@ -192,8 +222,8 @@ class VoiceEngineManager(
                 }
             } }) { fail("Zvuk trenutno nije dostupan. Pokušajte ponovo."); return }
             currentState = AssistantState.SPEAKING
-            if (tts?.speak(SerbianTextNormalizer.prepareForTts(text), TextToSpeech.QUEUE_FLUSH, Bundle(), id) == TextToSpeech.ERROR) fail("Govorni izlaz nije uspeo.")
-        } catch (e: Exception) { fail("Govorni izlaz nije dostupan.") }
+            if (tts?.speak(SerbianTextNormalizer.prepareForTts(text), TextToSpeech.QUEUE_FLUSH, Bundle(), id) == TextToSpeech.ERROR) showWithoutVoice(text, "Govorni izlaz nije uspeo.")
+        } catch (e: Exception) { showWithoutVoice(text, "Govorni izlaz nije dostupan.") }
     }
     fun submitCommand(command: ParsedCommandResult) {
         cancel(false)
@@ -203,7 +233,17 @@ class VoiceEngineManager(
     private fun refreshSosRecipient() { conversation.sosRecipient = context.getSharedPreferences("NaviGlasPrefs", Context.MODE_PRIVATE).getString("SOS_NUMBER", "").orEmpty() }
     fun setLastReceivedSms(sender: String, body: String) { lastSender = sender; lastBody = body }
     fun getLastSmsSender(): String? = lastSender
+    fun confirmPending() {
+        if (destroyed || !conversation.awaitingConfirmation) return
+        timers.removeCallbacksAndMessages(null)
+        speechId++; queuedSpeech = null; recognitionActive = false; recognitionGeneration++
+        recognizer?.destroy(); recognizer = null; initRecognizer()
+        tts?.stop(); speechOutputOverride?.stop(); releaseAudio()
+        currentState = AssistantState.PROCESSING
+        handle(conversation.accept("potvrdi"))
+    }
     private fun handle(reply: ConversationReply) {
+        callback.onConfirmationChanged(conversation.awaitingConfirmation)
         val command = reply.command
         when (command?.action) {
             CommandAction.READ_LAST_SMS -> speak(lastBody?.let { "Poslednja poruka od $lastSender glasi: $it" } ?: "Nema nedavno pristiglih poruka.")
@@ -231,6 +271,7 @@ class VoiceEngineManager(
         queuedSpeech = null; speechId++; recognitionActive = false; recognitionGeneration++
         recognizer?.destroy(); recognizer = null
         tts?.stop(); conversation.cancel(); releaseAudio()
+        callback.onConfirmationChanged(false)
         speechOutputOverride?.stop()
         if (!destroyed) { initRecognizer(); currentState = AssistantState.IDLE; if (announce) callback.onFeedback("Radnja je otkazana.") }
     }

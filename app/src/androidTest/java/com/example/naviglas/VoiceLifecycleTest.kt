@@ -24,6 +24,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.ConcurrentLinkedQueue
 
 /** Real Android recognizer IPC + scripted provider, without acoustic/network dependencies. */
@@ -37,6 +38,8 @@ class VoiceLifecycleTest {
     private val outputs = CopyOnWriteArrayList<String>()
     private var focus: AudioFocusRequest? = null
     private var outputDelay = 80L
+    private var outputFails = false
+    private val confirmation = AtomicBoolean(false)
 
     private fun start(vararg script: ScriptedRecognitionService.Step, denied: Boolean = false) {
         val testContext = InstrumentationRegistry.getInstrumentation().context
@@ -55,8 +58,12 @@ class VoiceLifecycleTest {
                 override fun onCommandParsed(result: ParsedCommandResult) { commands.add(result) }
                 override fun onError(errorMessage: String) { errors.add(errorMessage) }
                 override fun onFeedback(text: String) { outputs.add(text) }
+                override fun onConfirmationChanged(available: Boolean) { confirmation.set(available) }
             }, component, object : SpeechOutput {
-                override fun speak(text: String, onComplete: () -> Unit) { Handler(Looper.getMainLooper()).postDelayed(onComplete, outputDelay) }
+                override fun speak(text: String, onComplete: () -> Unit) {
+                    if (outputFails) throw IllegalStateException("No installed Serbian TTS voice")
+                    Handler(Looper.getMainLooper()).postDelayed(onComplete, outputDelay)
+                }
                 override fun stop() { /* Deliberately allow a stale completion to test cancellation. */ }
             }, recognitionIntentFactory = {
                 val step = queue.poll() ?: ScriptedRecognitionService.Step()
@@ -134,6 +141,26 @@ class VoiceLifecycleTest {
         Thread.sleep(1900)
         compose.runOnIdle { assertEquals(AssistantState.IDLE, engine!!.currentState) }
         assertTrue(commands.isEmpty())
+    }
+    @Test fun missingVoicePreservesCommandUntilExplicitScreenConfirmation() {
+        outputFails = true
+        start(ScriptedRecognitionService.Step("Pozovi Marka Nikolića"))
+        waitFor { confirmation.get() || errors.isNotEmpty() }
+        assertTrue(errors.toString(), errors.isEmpty())
+        assertTrue(commands.isEmpty())
+        compose.runOnIdle { assertEquals(AssistantState.IDLE, engine!!.currentState); engine!!.confirmPending() }
+        waitFor { commands.isNotEmpty() }
+        assertEquals("062222222", commands.single().phoneNumber)
+    }
+    @Test fun missingVoiceAllowsNextMicrophoneTapToConfirm() {
+        outputFails = true
+        start(ScriptedRecognitionService.Step("Pozovi Marka Nikolića"), ScriptedRecognitionService.Step("potvrdi"))
+        waitFor { confirmation.get() || errors.isNotEmpty() }
+        assertTrue(errors.toString(), errors.isEmpty())
+        compose.runOnIdle { engine!!.startListening() }
+        waitFor { commands.isNotEmpty() || errors.isNotEmpty() }
+        assertTrue(errors.toString(), errors.isEmpty())
+        assertEquals("062222222", commands.single().phoneNumber)
     }
 }
 

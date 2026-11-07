@@ -1,7 +1,9 @@
 # NaviGlas Reliable
 
 Glasovni Android asistent na srpskom, sa jednostavnim ekranom za vožnju.
-Razvojna verzija **1.1.0-dev**. Podržava Android 8.0 (API 26) i noviji.
+Razvojna verzija **1.1.1-dev**. Podržava Android 8.0 (API 26) i noviji.
+
+Aplikacija ne zahteva pretplatu, API ključ niti plaćeni cloud servis. Koristi instalirane Android servise za govor i prepoznavanje. SMS, pozive i mobilni internet obračunava operater prema korisnikovom paketu.
 
 ## Šta radi
 
@@ -14,6 +16,8 @@ Razvojna verzija **1.1.0-dev**. Podržava Android 8.0 (API 26) i noviji.
 - Mehur preko navigacije i pločica u brzim podešavanjima.
 
 Glasovni servis je jedini vlasnik mikrofona i TTS-a. Ekran posmatra stvarno stanje servisa.
+Prepoznavanje upravlja svojim audio fokusom: aplikacija ne prekida mikrofon kada pružalac prepoznavanja preuzme zvuk.
+Ako podrazumevani TTS nema srpski, pokušava se instalirani Google TTS. Ako glas nije dostupan, komanda ostaje vidljiva i čeka izričitu potvrdu na ekranu ili novi dodir mikrofona za glasovni odgovor.
 Slušanje se pokreće dodirom; nema stalnog osluškivanja ključne reči niti automatskog pokretanja mikrofona pri Bluetooth povezivanju.
 Zvuk koristi rutu koju je izabrao Android. Stvarni Bluetooth uređaj zahteva zaseban praktičan test.
 
@@ -49,6 +53,7 @@ Potreban je JDK 25, Android SDK 37.0, Build Tools 37.0.0 i SDK putanja u lokalno
 
 Na Windowsu koristite `gradlew.bat`. `local.properties`, keystore fajlovi i build izlazi ne pripadaju repozitorijumu.
 GitHub Actions pokreće unit testove, lint, debug build i emulator testove, i čuva APK, izveštaje i snimke ekrana kao artefakte.
+Testni RecognitionService i skriptovani odgovori nalaze se isključivo u test APK-u. Oni proveravaju Android IPC i životni ciklus prepoznavanja, ali ne predstavljaju akustički test stvarnog srpskog prepoznavanja.
 Proverite rezultat poslednjeg workflow pokretanja za odgovarajući commit; postojanje workflow fajla nije dokaz uspešnog testa.
 
 ## Ograničenja verifikacije
