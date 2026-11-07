@@ -43,7 +43,9 @@ class VoiceLifecycleTest {
 
     private fun start(vararg script: ScriptedRecognitionService.Step, denied: Boolean = false) {
         val testContext = InstrumentationRegistry.getInstrumentation().context
-        InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(testContext.packageName, Manifest.permission.RECORD_AUDIO)
+        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
+            "pm grant ${testContext.packageName} android.permission.RECORD_AUDIO"
+        ).use { descriptor -> java.io.FileInputStream(descriptor.fileDescriptor).use { it.readBytes() } }
         val queue = ConcurrentLinkedQueue(script.toList())
         // The scripted provider runs in the test APK process. Its script travels as intent extras.
         compose.runOnIdle {
@@ -163,4 +165,3 @@ class VoiceLifecycleTest {
         assertEquals("062222222", commands.single().phoneNumber)
     }
 }
-
