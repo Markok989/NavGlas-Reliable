@@ -12,21 +12,18 @@ class SmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Telephony.Sms.Intents.SMS_RECEIVED_ACTION) {
             val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
-            for (sms in messages) {
-                val sender = sms.originatingAddress ?: "Nepoznati broj"
-                val body = sms.messageBody ?: ""
-
-                val serviceIntent = Intent(context, VoiceAssistantService::class.java).apply {
-                    action = VoiceAssistantService.ACTION_INCOMING_SMS
-                    putExtra("EXTRA_SMS_SENDER", sender)
-                    putExtra("EXTRA_SMS_BODY", body)
-                }
-                try {
-                    ContextCompat.startForegroundService(context, serviceIntent)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+            if (messages.isEmpty()) return
+            val sender = messages.first().originatingAddress ?: "Nepoznati broj"
+            val body = messages.joinToString("") { it.messageBody.orEmpty() }
+            val serviceIntent = Intent(context, VoiceAssistantService::class.java).apply {
+                action = VoiceAssistantService.ACTION_INCOMING_SMS
+                putExtra("EXTRA_SMS_SENDER", sender)
+                putExtra("EXTRA_SMS_BODY", body)
+            }
+            if (VoiceAssistantService.isRunning) {
+                try { context.startService(serviceIntent) } catch (_: IllegalStateException) { }
             }
         }
     }
 }
+

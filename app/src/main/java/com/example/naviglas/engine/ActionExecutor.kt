@@ -31,6 +31,8 @@ object ActionExecutor {
         var bestLocation: android.location.Location? = null
         for (provider in providers) {
             val l = try { lm.getLastKnownLocation(provider) } catch (e: Exception) { null } ?: continue
+            val age = android.os.SystemClock.elapsedRealtimeNanos() - l.elapsedRealtimeNanos
+            if (age < 0 || age > 300_000_000_000L) continue
             if (bestLocation == null || l.accuracy < bestLocation.accuracy) {
                 bestLocation = l
             }
@@ -68,21 +70,20 @@ object ActionExecutor {
         onResult: (String) -> Unit
     ) {
         val contact = command.contactName?.let { name ->
-            contacts.firstOrNull { it.name.equals(name, ignoreCase = true) }
+            contacts.filter { it.name.equals(name, ignoreCase = true) }.singleOrNull()
         }
 
         when (command.action) {
             CommandAction.CALL -> {
-                val phoneNumber = command.phoneNumber ?: contact?.phoneNumber
+                val phoneNumber = PhoneNumbers.normalize(command.phoneNumber.orEmpty())
                 if (!phoneNumber.isNullOrBlank()) {
                     val intent = Intent(Intent.ACTION_CALL).apply {
-                        data = Uri.parse("tel:$phoneNumber")
+                        data = Uri.fromParts("tel", phoneNumber, null)
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     }
                     try {
                         context.startActivity(intent)
                         onResult("Pozivam ${contact?.name ?: phoneNumber}.")
-                        returnToActiveNavApp(context)
                     } catch (e: Exception) {
                         onResult("Greška pri pokretanju poziva.")
                     }
@@ -92,15 +93,12 @@ object ActionExecutor {
             }
 
             CommandAction.SEND_SMS -> {
-                val phoneNumber = command.phoneNumber ?: contact?.phoneNumber
+                val phoneNumber = PhoneNumbers.normalize(command.phoneNumber.orEmpty())
                 val messageText = command.messageText
 
                 if (!phoneNumber.isNullOrBlank() && !messageText.isNullOrBlank()) {
                     try {
-                        val smsManager = getSmsManager(context)
-                        smsManager.sendTextMessage(phoneNumber, null, messageText, null, null)
-                        onResult("Poruka predata telefonu za slanje za ${contact?.name ?: phoneNumber}.")
-                        returnToActiveNavApp(context)
+                        SmsSender.send(context, phoneNumber, messageText, onResult)
                     } catch (e: Exception) {
                         onResult("Greška pri slanju SMS poruke.")
                     }
@@ -118,7 +116,6 @@ object ActionExecutor {
                     } else {
                         onResult("Prihvatanje poziva nije podržano na ovoj verziji Androida.")
                     }
-                    returnToActiveNavApp(context)
                 } catch (e: Exception) {
                     onResult("Greška pri javljanju na poziv.")
                 }
@@ -128,12 +125,11 @@ object ActionExecutor {
                 try {
                     val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        telecomManager.endCall()
-                        onResult("Poziv je odbijen.")
+                        val ended = telecomManager.endCall()
+                        onResult(if (ended) "Poziv je odbijen." else "Nema poziva koji može da se odbije.")
                     } else {
                         onResult("Odbijanje poziva nije podržano na ovoj verziji Androida.")
                     }
-                    returnToActiveNavApp(context)
                 } catch (e: Exception) {
                     onResult("Greška pri odbijanju poziva.")
                 }
@@ -141,8 +137,8 @@ object ActionExecutor {
 
             CommandAction.SILENCE_CALL -> {
                 try {
-                    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                    audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
+                    val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+                    telecomManager.silenceRinger()
                     onResult("Zvono je utišano.")
                 } catch (e: Exception) {
                     onResult("Greška pri utišavanju zvona.")
@@ -155,17 +151,14 @@ object ActionExecutor {
                     val loc = getBestLastKnownLocation(lm)
 
                     val sosText = if (loc != null) {
-                        "Hitno! Potrebna pomoć na putu. Moja lokacija: https://maps.google.com/?q=${loc.latitude},${loc.longitude}"
+                        "Hitno! Potrebna pomoć na putu. Poslednja dostupna lokacija: https://maps.google.com/?q=${loc.latitude},${loc.longitude}"
                     } else {
                         "Hitno! Potrebna pomoć na putu!"
                     }
 
-                    val sosContactNumber = contact?.phoneNumber
+                    val sosContactNumber = PhoneNumbers.normalize(command.phoneNumber.orEmpty())
                     if (sosContactNumber != null) {
-                        val smsManager = getSmsManager(context)
-                        smsManager.sendTextMessage(sosContactNumber, null, sosText, null, null)
-                        onResult("SOS poruka predata telefonu za slanje.")
-                        returnToActiveNavApp(context)
+                        SmsSender.send(context, sosContactNumber, sosText, onResult)
                     } else {
                         onResult("Nije definisan SOS kontakt.")
                     }
@@ -201,7 +194,6 @@ object ActionExecutor {
                     } else {
                         onResult("Trenutna lokacija nije dostupna.")
                     }
-                    returnToActiveNavApp(context)
                 } catch (e: Exception) {
                     onResult("Ne mogu da odredim lokaciju.")
                 }
@@ -211,7 +203,6 @@ object ActionExecutor {
                 val timeFormat = SimpleDateFormat("HH 'sati i' mm 'minuta'", Locale("sr", "RS"))
                 val currentTime = timeFormat.format(Date())
                 onResult("Sada je $currentTime.")
-                returnToActiveNavApp(context)
             }
 
             else -> {
@@ -220,3 +211,4 @@ object ActionExecutor {
         }
     }
 }
+

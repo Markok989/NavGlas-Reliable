@@ -32,3 +32,5 @@ jobs:
             app/build/outputs/apk/debug/*.apk
             app/build/reports/tests/
             app/build/reports/lint-results-debug.html
+
+

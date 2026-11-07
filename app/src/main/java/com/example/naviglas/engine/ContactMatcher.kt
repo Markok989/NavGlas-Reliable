@@ -64,7 +64,7 @@ object ContactMatcher {
             matchedList.addAll(matches)
         }
 
-        return matchedList.distinctBy { it.name }
+        return matchedList.distinctBy { it.name to it.phoneNumber }
     }
 
     /**
@@ -167,15 +167,17 @@ object ContactMatcher {
      * Očitava kontakte iz telefona i grupisanje više brojeva po kontaktu.
      */
     fun loadContactsFromPhone(context: Context): List<Contact> {
-        val map = mutableMapOf<String, MutableList<String>>()
+        val map = mutableMapOf<String, Pair<String, MutableList<String>>>()
         val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
         val projection = arrayOf(
+            ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
             ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
             ContactsContract.CommonDataKinds.Phone.NUMBER
         )
 
         try {
             context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
                 val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
                 val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
 
@@ -184,7 +186,8 @@ object ContactMatcher {
                     val number = if (numberIndex >= 0) cursor.getString(numberIndex) else ""
                     if (name.isNotBlank() && number.isNotBlank()) {
                         val cleanNum = number.replace(" ", "").replace("-", "")
-                        map.getOrPut(name) { mutableListOf() }.apply {
+                        val id = if (idIndex >= 0) cursor.getString(idIndex) else "$name:$cleanNum"
+                        map.getOrPut(id) { name to mutableListOf() }.second.apply {
                             if (!contains(cleanNum)) add(cleanNum)
                         }
                     }
@@ -194,7 +197,7 @@ object ContactMatcher {
             e.printStackTrace()
         }
 
-        return map.map { (name, numbers) ->
+        return map.values.map { (name, numbers) ->
             Contact(
                 name = name,
                 phoneNumber = numbers.first(),
@@ -221,3 +224,4 @@ object ContactMatcher {
         return dp[s1.length][s2.length]
     }
 }
+

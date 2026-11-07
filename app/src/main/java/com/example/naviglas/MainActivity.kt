@@ -2,6 +2,11 @@ package com.example.naviglas
 
 import android.Manifest
 import android.content.Intent
+import android.content.Context
+import android.content.ComponentName
+import android.content.ServiceConnection
+import android.os.IBinder
+import androidx.activity.compose.BackHandler
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -43,7 +48,25 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity(), VoiceEngineCallback {
 
-    private lateinit var voiceEngineManager: VoiceEngineManager
+    private var voiceEngineManager: VoiceEngineManager? = null
+    private var assistantService: VoiceAssistantService? = null
+    private var isBound = false
+    private var serviceConnected by mutableStateOf(false)
+    private var pendingMicTrigger = false
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            val service = (binder as VoiceAssistantService.LocalBinder).service
+            assistantService = service
+            voiceEngineManager = service.engine
+            serviceConnected = true
+            service.addObserver(this@MainActivity)
+            service.engine.updateTtsSettings(speechRate, pitch)
+            if (pendingMicTrigger) { pendingMicTrigger = false; service.engine.startListening() }
+        }
+        override fun onServiceDisconnected(name: ComponentName?) {
+            assistantService = null; voiceEngineManager = null; serviceConnected = false
+        }
+    }
     private var overlayVoiceWidget: OverlayVoiceWidget? = null
 
     private var currentState by mutableStateOf(AssistantState.IDLE)
@@ -88,8 +111,10 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
                 Manifest.permission.READ_PHONE_STATE,
                 Manifest.permission.READ_CALL_LOG,
                 Manifest.permission.ANSWER_PHONE_CALLS,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
                 Manifest.permission.ACCESS_FINE_LOCATION
             )
+            if (Build.VERSION.SDK_INT >= 33) list.add(Manifest.permission.POST_NOTIFICATIONS)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 list.add(Manifest.permission.BLUETOOTH_CONNECT)
             }
@@ -125,14 +150,14 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
             )
         }
 
-        voiceEngineManager = VoiceEngineManager(this, this)
+        loadSettings()
         overlayVoiceWidget = OverlayVoiceWidget(this) {
             // Dodir na mehur pokreće glasovno slušanje
-            voiceEngineManager.startListening()
+            voiceEngineManager?.startListening()
         }
 
         if (intent?.getBooleanExtra("EXTRA_TRIGGER_MIC", false) == true) {
-            voiceEngineManager.startListening()
+            pendingMicTrigger = true
         }
 
         loadTriggerApps()
@@ -141,6 +166,7 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
 
         setContent {
             NaviGlasTheme {
+                BackHandler(enabled = isSettingsOpen) { isSettingsOpen = false; saveSettings() }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -174,11 +200,11 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
                             triggerAppPackages = triggerAppPackages,
                             onSpeechRateChange = { newRate ->
                                 speechRate = newRate
-                                voiceEngineManager.updateTtsSettings(speechRate, pitch)
+                                voiceEngineManager?.updateTtsSettings(speechRate, pitch)
                             },
                             onPitchChange = { newPitch ->
                                 pitch = newPitch
-                                voiceEngineManager.updateTtsSettings(speechRate, pitch)
+                                voiceEngineManager?.updateTtsSettings(speechRate, pitch)
                             },
                             onOverlayAlphaChange = { newAlpha ->
                                 overlayAlpha = newAlpha
@@ -211,8 +237,8 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
                                 }
                             },
                             onPlayTestVoice = { sampleText ->
-                                voiceEngineManager.updateTtsSettings(speechRate, pitch)
-                                voiceEngineManager.speak(sampleText)
+                                voiceEngineManager?.updateTtsSettings(speechRate, pitch)
+                                voiceEngineManager?.speak(sampleText)
                             },
                             onOpenSystemTtsSettings = {
                                 try {
@@ -223,7 +249,7 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
                                     startActivity(intent)
                                 }
                             },
-                            onBackClick = { isSettingsOpen = false }
+                            onBackClick = { isSettingsOpen = false; saveSettings() }
                         )
                     } else {
                         val navApps = cachedNavApps.ifEmpty { getInstalledNavApps() }
@@ -233,30 +259,30 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
                             currentState = currentState,
                             recognizedText = recognizedText,
                             spokenFeedback = spokenFeedback,
-                            isServiceRunning = true,
+                            isServiceRunning = serviceConnected,
                             selectedNavAppName = currentNavName,
-                            onMicClick = { voiceEngineManager.startListening() },
+                            onMicClick = { voiceEngineManager?.startListening() },
+                            onCancelClick = { voiceEngineManager?.cancel() },
                             onQuickEtaClick = {
-                                val contacts = ContactMatcher.loadContactsFromPhone(this@MainActivity)
-                                val recentSender = voiceEngineManager.getLastSmsSender()
-                                val target = if (!recentSender.isNullOrBlank()) {
-                                    recentSender
-                                } else {
-                                    contacts.firstOrNull()?.name ?: "Kontakt"
-                                }
-                                val parsed = com.example.naviglas.engine.VoiceCommandParser.parseInput(
-                                    "Pošalji poruku $target da $quickEtaMessage", contacts
-                                )
-                                onCommandParsed(parsed)
+                                val target = voiceEngineManager?.getLastSmsSender()
+                                if (target.isNullOrBlank()) spokenFeedback = "Nema poslednjeg pošiljaoca. Recite: pošalji poruku i ime kontakta."
+                                else voiceEngineManager?.submitCommand(ParsedCommandResult(
+                                    action = com.example.naviglas.engine.CommandAction.SEND_SMS,
+                                    contactName = target, recipientQuery = target,
+                                    messageText = quickEtaMessage, spokenFeedback = "Pripremam brzi odgovor."
+                                ))
                             },
                             onSosClick = {
-                                val contacts = ContactMatcher.loadContactsFromPhone(this@MainActivity)
-                                val targetParam = if (sosNumber.isNotBlank()) sosNumber else "SOS"
-                                val parsed = com.example.naviglas.engine.VoiceCommandParser.parseInput("Šalji SOS za $targetParam", contacts)
-                                onCommandParsed(parsed)
+                                saveSettings()
+                                if (sosNumber.isBlank()) spokenFeedback = "Prvo podesite SOS primaoca u podešavanjima."
+                                else voiceEngineManager?.submitCommand(ParsedCommandResult(
+                                    action = com.example.naviglas.engine.CommandAction.SEND_SOS,
+                                    contactName = sosNumber, recipientQuery = sosNumber,
+                                    spokenFeedback = "Pripremam SOS poruku."
+                                ))
                             },
                             onOpenNavAppClick = { launchSelectedNavApp() },
-                            onSettingsClick = { isSettingsOpen = true }
+                            onSettingsClick = { voiceEngineManager?.cancel(false); isSettingsOpen = true }
                         )
                     }
                 }
@@ -285,7 +311,7 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.getBooleanExtra("EXTRA_TRIGGER_MIC", false)) {
-            voiceEngineManager.startListening()
+            if (serviceConnected) voiceEngineManager?.startListening() else pendingMicTrigger = true
         }
     }
 
@@ -375,10 +401,7 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
         }
     }
 
-    private fun requestAllPermissions() {
-        permissionLauncher.launch(requiredPermissions)
-        requestOverlayPermission()
-    }
+    private fun requestAllPermissions() { permissionLauncher.launch(requiredPermissions) }
 
     private fun requestOverlayPermission() {
         if (!Settings.canDrawOverlays(this)) {
@@ -407,16 +430,38 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
     }
 
     private fun loadContacts() {
-        val contacts = ContactMatcher.loadContactsFromPhone(this)
-        voiceEngineManager.updateContacts(contacts)
+        assistantService?.refreshContacts()
     }
 
     private fun startAssistantService() {
-        val intent = Intent(this, VoiceAssistantService::class.java).apply {
-            action = VoiceAssistantService.ACTION_START_SERVICE
-        }
-        ContextCompat.startForegroundService(this, intent)
+        if (isBound) return
+        val intent = Intent(this, VoiceAssistantService::class.java).setAction(VoiceAssistantService.ACTION_START_SERVICE)
+        try {
+            ContextCompat.startForegroundService(this, intent)
+            isBound = bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        } catch (e: Exception) { spokenFeedback = "Servis nije pokrenut. Proverite dozvolu za mikrofon." }
     }
+
+    private fun saveSettings() {
+        getSharedPreferences("NaviGlasPrefs", MODE_PRIVATE).edit()
+            .putFloat("SPEECH_RATE", speechRate).putFloat("PITCH", pitch)
+            .putFloat("OVERLAY_ALPHA", overlayAlpha).putFloat("OVERLAY_SIZE", overlaySize)
+            .putString("SOS_NUMBER", sosNumber.trim()).putString("QUICK_ETA", quickEtaMessage)
+            .putString("NAV_APP", selectedNavAppPackage).putBoolean("AUTO_OPEN_NAV", autoOpenNavAppOnStart)
+            .putBoolean("BLUETOOTH_AUTO", isBluetoothAutoStartEnabled).apply()
+    }
+    private fun loadSettings() {
+        val p = getSharedPreferences("NaviGlasPrefs", MODE_PRIVATE)
+        speechRate = p.getFloat("SPEECH_RATE", 0.92f); pitch = p.getFloat("PITCH", 0.98f)
+        overlayAlpha = p.getFloat("OVERLAY_ALPHA", 0.95f); overlaySize = p.getFloat("OVERLAY_SIZE", 64f)
+        sosNumber = p.getString("SOS_NUMBER", "").orEmpty()
+        quickEtaMessage = p.getString("QUICK_ETA", quickEtaMessage) ?: quickEtaMessage
+        selectedNavAppPackage = p.getString("NAV_APP", selectedNavAppPackage) ?: selectedNavAppPackage
+        autoOpenNavAppOnStart = p.getBoolean("AUTO_OPEN_NAV", false)
+        isBluetoothAutoStartEnabled = p.getBoolean("BLUETOOTH_AUTO", false)
+        wakeWordEnabled = false
+    }
+    override fun onPause() { saveSettings(); super.onPause() }
 
     override fun onStateChanged(state: AssistantState) {
         currentState = state
@@ -424,6 +469,7 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
             AssistantState.LISTENING -> "Slušam..."
             AssistantState.PROCESSING -> "Obrađujem..."
             AssistantState.SPEAKING -> "Govorim..."
+            AssistantState.WAITING_FOR_CONFIRMATION -> "Čekam odgovor..."
             else -> "NaviGlas"
         })
     }
@@ -432,14 +478,8 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
         recognizedText = text
     }
 
-    override fun onCommandParsed(result: ParsedCommandResult) {
-        spokenFeedback = result.spokenFeedback
-        val contacts = ContactMatcher.loadContactsFromPhone(this)
-        ActionExecutor.execute(this, result, contacts) { feedback ->
-            spokenFeedback = feedback
-            voiceEngineManager.speak(feedback)
-        }
-    }
+    override fun onCommandParsed(result: ParsedCommandResult) { voiceEngineManager?.submitCommand(result) }
+    override fun onFeedback(text: String) { spokenFeedback = text }
 
     override fun onError(errorMessage: String) {
         spokenFeedback = errorMessage
@@ -447,7 +487,10 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
 
     override fun onDestroy() {
         overlayVoiceWidget?.hideOverlay()
-        voiceEngineManager.destroy()
+        assistantService?.removeObserver(this)
+        if (isBound) { unbindService(connection); isBound = false }
+        voiceEngineManager = null; assistantService = null
         super.onDestroy()
     }
 }
+

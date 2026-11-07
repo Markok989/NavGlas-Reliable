@@ -65,16 +65,6 @@ class NaviGlasAccessibilityService : AccessibilityService() {
                 lastTriggerTime = now
 
                 mainHandler.post {
-                    // 1. Pokrećemo pozadinski servis za mikrofon i glasovne komande
-                    val serviceIntent = Intent(applicationContext, VoiceAssistantService::class.java).apply {
-                        action = VoiceAssistantService.ACTION_START_SERVICE
-                    }
-                    try {
-                        ContextCompat.startForegroundService(applicationContext, serviceIntent)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-
                     // 2. Odmah prikazujemo lebdeći mehur preko mapa (Google Maps, OsmAnd, Waze itd.)
                     if (Settings.canDrawOverlays(this@NaviGlasAccessibilityService)) {
                         overlayVoiceWidget?.showOverlay("NaviGlas Aktivan")
@@ -91,3 +81,4 @@ class NaviGlasAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {}
 }
+

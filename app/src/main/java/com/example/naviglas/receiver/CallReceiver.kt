@@ -20,7 +20,7 @@ class CallReceiver : BroadcastReceiver() {
                     putExtra("EXTRA_CALLER", incomingNumber)
                 }
                 try {
-                    ContextCompat.startForegroundService(context, serviceIntent)
+                    if (VoiceAssistantService.isRunning) context.startService(serviceIntent)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -28,3 +28,4 @@ class CallReceiver : BroadcastReceiver() {
         }
     }
 }
+
