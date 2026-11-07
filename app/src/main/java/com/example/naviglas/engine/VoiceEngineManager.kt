@@ -2,6 +2,7 @@ package com.example.naviglas.engine
 
 import android.Manifest
 import android.content.Context
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -24,7 +25,19 @@ interface VoiceEngineCallback {
     fun onServiceStopped() {}
 }
 
-class VoiceEngineManager(private val context: Context, private val callback: VoiceEngineCallback) : TextToSpeech.OnInitListener {
+/** Injectable speech output lets integration tests exercise the real recognizer lifecycle. */
+interface SpeechOutput {
+    fun speak(text: String, onComplete: () -> Unit)
+    fun stop()
+}
+
+class VoiceEngineManager(
+    private val context: Context,
+    private val callback: VoiceEngineCallback,
+    private val recognitionComponent: ComponentName? = null,
+    private val speechOutputOverride: SpeechOutput? = null,
+    private val recognitionIntentFactory: (() -> Intent)? = null
+) : TextToSpeech.OnInitListener {
     private val handler = Handler(Looper.getMainLooper())
     private val timers = Handler(Looper.getMainLooper())
     private val conversation = ConversationController()
@@ -46,12 +59,13 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
     var currentState = AssistantState.IDLE
         private set(value) { field = value; callback.onStateChanged(value) }
 
-    init { initRecognizer(); tts = TextToSpeech(context, this) }
+    init { initRecognizer(); if (speechOutputOverride == null) tts = TextToSpeech(context, this) }
 
     private fun initRecognizer() {
-        if (!SpeechRecognizer.isRecognitionAvailable(context)) return
+        if (recognitionComponent == null && !SpeechRecognizer.isRecognitionAvailable(context)) return
         val generation = ++recognitionGeneration
-        recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
+        recognizer = (recognitionComponent?.let { SpeechRecognizer.createSpeechRecognizer(context, it) }
+            ?: SpeechRecognizer.createSpeechRecognizer(context)).apply {
             setRecognitionListener(object : RecognitionListener {
                 private fun valid() = !destroyed && generation == recognitionGeneration && recognitionActive
                 override fun onReadyForSpeech(params: Bundle?) { if (valid()) currentState = if (conversation.awaitingInput) AssistantState.WAITING_FOR_CONFIRMATION else AssistantState.LISTENING }
@@ -66,11 +80,14 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
                     if (conversation.awaitingInput && retries++ < 2 && error in setOf(SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
                         timers.postDelayed({ listen() }, 600)
                     } else fail(when (error) {
+                        SpeechRecognizer.ERROR_AUDIO -> "Mikrofon nije mogao da snima (kod 3). Proverite da ga druga aplikacija ne koristi."
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Dozvolite pristup mikrofonu u podešavanjima."
                         SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Proverite internet vezu i pokušajte ponovo."
                         SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Nisam čuo odgovor. Radnja je otkazana."
                         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Mikrofon je zauzet. Pokušajte ponovo."
-                        else -> "Prepoznavanje govora nije uspelo. Pokušajte ponovo."
+                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "Servis ne podržava srpski govor (kod 12). Proverite Google aplikaciju i sistemsko prepoznavanje govora."
+                        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "Srpski govor trenutno nije dostupan (kod 13). Proverite internet i jezičke podatke."
+                        else -> "Prepoznavanje govora nije uspelo (kod $error). Pokušajte ponovo."
                     })
                 }
                 override fun onResults(results: Bundle?) {
@@ -108,7 +125,8 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
             override fun onStart(utteranceId: String?) { handler.post { if (!destroyed && utteranceId == speechId.toString()) currentState = AssistantState.SPEAKING } }
             override fun onDone(utteranceId: String?) { timers.postDelayed({
                 if (!destroyed && utteranceId == speechId.toString()) {
-                    if (conversation.awaitingInput) listen() else { currentState = AssistantState.IDLE; releaseAudio() }
+                    releaseAudio()
+                    if (conversation.awaitingInput) listen() else currentState = AssistantState.IDLE
                 }
             }, 450) }
             override fun onError(utteranceId: String?) { handler.post { if (!destroyed && utteranceId == speechId.toString()) fail("Glas nije mogao da se reprodukuje. Radnja je otkazana.") } }
@@ -132,20 +150,34 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { fail("Mikrofon nije dozvoljen."); return }
         if (recognizer == null) { fail("Prepoznavanje govora nije dostupno na telefonu."); return }
         try {
-            if (!audio.requestAudioFocus { handler.post { cancel() } }) { fail("Zvuk trenutno nije dostupan. Pokušajte ponovo."); return }
+            // Recognition providers manage their own recording focus. Holding our playback
+            // focus here and cancelling on its loss can immediately cancel our own microphone.
+            releaseAudio()
             recognitionActive = true
             currentState = if (conversation.awaitingInput) AssistantState.WAITING_FOR_CONFIRMATION else AssistantState.LISTENING
-            recognizer?.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            val request = recognitionIntentFactory?.invoke() ?: Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "sr-RS")
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            })
+            }
+            recognizer?.startListening(request)
             timers.postDelayed(watchdog, 20000)
         } catch (e: Exception) { fail("Ne mogu da pokrenem mikrofon. Proverite dozvole.") }
     }
     fun speak(text: String, utteranceId: String = "NaviGlasTTS") {
         if (destroyed) return
         callback.onFeedback(text)
+        speechOutputOverride?.let { output ->
+            val id = ++speechId
+            currentState = AssistantState.SPEAKING
+            output.speak(text) { handler.post {
+                if (!destroyed && id == speechId) {
+                    releaseAudio()
+                    if (conversation.awaitingInput) listen() else currentState = AssistantState.IDLE
+                }
+            } }
+            return
+        }
         if (!ttsReady) {
             ttsFailure?.let { fail(it); return }
             queuedSpeech = text
@@ -153,8 +185,12 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
             return
         }
         try {
-            if (!audio.requestAudioFocus { handler.post { cancel() } }) { fail("Zvuk trenutno nije dostupan. Pokušajte ponovo."); return }
             val id = (++speechId).toString()
+            if (!audio.requestAudioFocus { handler.post {
+                if (!destroyed && id == speechId.toString() && currentState == AssistantState.SPEAKING) {
+                    fail("Govor je prekinut jer je druga aplikacija preuzela zvuk.")
+                }
+            } }) { fail("Zvuk trenutno nije dostupan. Pokušajte ponovo."); return }
             currentState = AssistantState.SPEAKING
             if (tts?.speak(SerbianTextNormalizer.prepareForTts(text), TextToSpeech.QUEUE_FLUSH, Bundle(), id) == TextToSpeech.ERROR) fail("Govorni izlaz nije uspeo.")
         } catch (e: Exception) { fail("Govorni izlaz nije dostupan.") }
@@ -195,6 +231,7 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
         queuedSpeech = null; speechId++; recognitionActive = false; recognitionGeneration++
         recognizer?.destroy(); recognizer = null
         tts?.stop(); conversation.cancel(); releaseAudio()
+        speechOutputOverride?.stop()
         if (!destroyed) { initRecognizer(); currentState = AssistantState.IDLE; if (announce) callback.onFeedback("Radnja je otkazana.") }
     }
     private fun releaseAudio() { audio.abandonAudioFocus() }
