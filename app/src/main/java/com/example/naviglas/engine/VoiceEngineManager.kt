@@ -21,6 +21,7 @@ interface VoiceEngineCallback {
     fun onCommandParsed(result: ParsedCommandResult)
     fun onError(errorMessage: String)
     fun onFeedback(text: String) {}
+    fun onServiceStopped() {}
 }
 
 class VoiceEngineManager(private val context: Context, private val callback: VoiceEngineCallback) : TextToSpeech.OnInitListener {

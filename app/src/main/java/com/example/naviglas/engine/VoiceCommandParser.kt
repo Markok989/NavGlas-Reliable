@@ -173,7 +173,7 @@ object VoiceCommandParser {
                 return ParsedCommandResult(
                     action = CommandAction.SEND_SMS,
                     contactName = resolvedName,
-                recipientQuery = spokenContactCandidate,
+                    recipientQuery = spokenContactCandidate,
                     messageText = null,
                     confidence = match.confidence,
                     spokenFeedback = "Koju poruku želite da pošaljete za $resolvedName?"

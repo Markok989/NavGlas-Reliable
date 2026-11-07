@@ -11,11 +11,15 @@ import java.util.UUID
 /** Reports radio send results without claiming delivery. */
 object SmsSender {
     fun send(context: Context, number: String, text: String, onResult: (String) -> Unit) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            Handler(Looper.getMainLooper()).post { send(context, number, text, onResult) }
+            return
+        }
         val app = context.applicationContext
         val manager = if (Build.VERSION.SDK_INT >= 31) app.getSystemService(SmsManager::class.java) else {
             @Suppress("DEPRECATION") SmsManager.getDefault()
         }
-        if (!SubscriptionManager.isValidSubscriptionId(manager.subscriptionId)) {
+        if (manager.subscriptionId < 0 || manager.subscriptionId == SubscriptionManager.DEFAULT_SUBSCRIPTION_ID) {
             onResult("Izaberite podrazumevanu SIM karticu za SMS u podešavanjima telefona.")
             return
         }

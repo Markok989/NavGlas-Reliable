@@ -38,7 +38,15 @@ class VoiceAssistantService : Service(), VoiceEngineCallback {
     }
     fun removeObserver(observer: VoiceEngineCallback) { observers.remove(observer) }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP_SERVICE) { stopSelf(); return START_NOT_STICKY }
+        if (intent?.action == ACTION_STOP_SERVICE) {
+            engine.cancel(false)
+            isRunning = false
+            foreground = false
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            observers.toList().forEach { it.onServiceStopped() }
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (!foreground && !enterForeground()) { stopSelf(); return START_NOT_STICKY }
         when (intent?.action) {
             ACTION_TRIGGER_LISTENING -> engine.startListening()

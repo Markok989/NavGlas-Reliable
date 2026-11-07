@@ -480,6 +480,12 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
 
     override fun onCommandParsed(result: ParsedCommandResult) { voiceEngineManager?.submitCommand(result) }
     override fun onFeedback(text: String) { spokenFeedback = text }
+    override fun onServiceStopped() {
+        assistantService?.removeObserver(this)
+        if (isBound) { unbindService(connection); isBound = false }
+        assistantService = null; voiceEngineManager = null; serviceConnected = false
+        spokenFeedback = "Režim vožnje je zaustavljen. Ponovo otvorite aplikaciju za pokretanje."
+    }
 
     override fun onError(errorMessage: String) {
         spokenFeedback = errorMessage
