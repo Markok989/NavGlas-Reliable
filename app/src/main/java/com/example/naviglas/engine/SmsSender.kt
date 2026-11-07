@@ -11,24 +11,29 @@ import java.util.UUID
 /** Reports radio send results without claiming delivery. */
 object SmsSender {
     fun send(context: Context, number: String, text: String, onResult: (String) -> Unit) {
+        sendTracked(context, number, text, onResult) {}
+    }
+    fun sendTracked(context: Context, number: String, text: String, onResult: (String) -> Unit, onFinished: (SmsSendOutcome) -> Unit) {
         if (context.checkSelfPermission(android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             onResult("Nedostaje dozvola za slanje SMS poruka. Omogućite je u dozvolama aplikacije.")
+            onFinished(SmsSendOutcome.FAILED)
             return
         }
         if (Looper.myLooper() != Looper.getMainLooper()) {
-            Handler(Looper.getMainLooper()).post { send(context, number, text, onResult) }
+            Handler(Looper.getMainLooper()).post { sendTracked(context, number, text, onResult, onFinished) }
             return
         }
-        try { sendOnMain(context, number, text, onResult) }
-        catch (e: Exception) { onResult("SMS nije dostupan. Proverite dozvole, SIM karticu i podršku telefona.") }
+        try { sendOnMain(context, number, text, onResult, onFinished) }
+        catch (e: Exception) { onResult("SMS nije dostupan. Proverite dozvole, SIM karticu i podršku telefona."); onFinished(SmsSendOutcome.FAILED) }
     }
-    private fun sendOnMain(context: Context, number: String, text: String, onResult: (String) -> Unit) {
+    private fun sendOnMain(context: Context, number: String, text: String, onResult: (String) -> Unit, onFinished: (SmsSendOutcome) -> Unit) {
         val app = context.applicationContext
         val manager = if (Build.VERSION.SDK_INT >= 31) app.getSystemService(SmsManager::class.java) else {
             @Suppress("DEPRECATION") SmsManager.getDefault()
         }
         if (manager.subscriptionId < 0 || manager.subscriptionId == SubscriptionManager.DEFAULT_SUBSCRIPTION_ID) {
             onResult("Izaberite podrazumevanu SIM karticu za SMS u podešavanjima telefona.")
+            onFinished(SmsSendOutcome.FAILED)
             return
         }
         val parts = manager.divideMessage(text)
@@ -38,21 +43,22 @@ object SmsSender {
         var registered = false
         var finished = false
         lateinit var receiver: BroadcastReceiver
-        fun finish(message: String) {
+        fun finish(message: String, outcome: SmsSendOutcome) {
             if (finished) return
             finished = true
             handler.removeCallbacksAndMessages(null)
             if (registered) { app.unregisterReceiver(receiver); registered = false }
             onResult(message)
+            onFinished(outcome)
         }
         receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 val index = intent?.getIntExtra("part", -1) ?: return
                 val outcome = tracker.record(index, resultCode == Activity.RESULT_OK)
                 if (outcome == SmsSendOutcome.FAILED) {
-                    finish("Slanje SMS-a nije potvrđeno (kod $resultCode). Proverite mrežu i kredit. Proverite poruke pre ponovnog slanja.")
+                    finish("Slanje SMS-a nije potvrđeno (kod $resultCode). Proverite mrežu i kredit. Proverite poruke pre ponovnog slanja.", SmsSendOutcome.FAILED)
                 } else if (outcome == SmsSendOutcome.SENT) {
-                    finish("SMS je poslat mreži. Isporuka primaocu nije potvrđena.")
+                    finish("SMS je poslat mreži. Isporuka primaocu nije potvrđena.", SmsSendOutcome.SENT)
                 }
             }
         }
@@ -63,11 +69,10 @@ object SmsSender {
             val intents = ArrayList(parts.indices.map { index ->
                 PendingIntent.getBroadcast(app, index, Intent(action).setPackage(app.packageName).putExtra("part", index), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             })
-            handler.postDelayed({ if (tracker.timeout() == SmsSendOutcome.UNKNOWN) finish("Nije stigla potvrda slanja SMS-a. Proverite aplikaciju za poruke pre ponovnog slanja.") }, 45000)
+            handler.postDelayed({ if (tracker.timeout() == SmsSendOutcome.UNKNOWN) finish("Nije stigla potvrda slanja SMS-a. Proverite aplikaciju za poruke pre ponovnog slanja.", SmsSendOutcome.UNKNOWN) }, 45000)
             manager.sendMultipartTextMessage(number, null, parts, intents, null)
             onResult("SMS je predat telefonu. Čekam potvrdu slanja.")
-        } catch (e: SecurityException) { finish("Nedostaje dozvola za slanje SMS poruka.") }
-        catch (e: Exception) { finish("SMS nije mogao da se pošalje. Proverite SIM karticu i mrežu.") }
+        } catch (e: SecurityException) { finish("Nedostaje dozvola za slanje SMS poruka.", SmsSendOutcome.FAILED) }
+        catch (e: Exception) { finish("SMS nije mogao da se pošalje. Proverite SIM karticu i mrežu.", SmsSendOutcome.FAILED) }
     }
 }
-

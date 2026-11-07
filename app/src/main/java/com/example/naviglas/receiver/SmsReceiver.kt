@@ -21,9 +21,9 @@ class SmsReceiver : BroadcastReceiver() {
                 putExtra("EXTRA_SMS_BODY", body)
             }
             if (VoiceAssistantService.isRunning) {
+                com.example.naviglas.car.CarMessaging.incoming(context, sender, body)
                 try { context.startService(serviceIntent) } catch (_: IllegalStateException) { }
             }
         }
     }
 }
-

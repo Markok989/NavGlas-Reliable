@@ -17,6 +17,7 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
 
     <queries>
         <intent>
@@ -41,6 +42,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.NaviGlas">
 
+        <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
+        <service android:name=".car.CarReplyService" android:exported="false" android:foregroundServiceType="remoteMessaging" />
+        <service android:name=".car.CarReadService" android:exported="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -60,6 +65,7 @@
 
         <receiver
             android:name=".receiver.SmsReceiver"
+            android:permission="android.permission.BROADCAST_SMS"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
@@ -110,4 +116,3 @@
     </application>
 
 </manifest>
-
