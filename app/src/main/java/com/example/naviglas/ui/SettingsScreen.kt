@@ -41,6 +41,8 @@ fun SettingsScreen(
     onTriggerAppToggle: (String) -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onPlayTestVoice: (String) -> Unit,
+    onOpenAppSettings: () -> Unit,
+    onOpenOverlaySettings: () -> Unit,
     onOpenSystemTtsSettings: () -> Unit,
     onBackClick: () -> Unit
 ) {
@@ -69,6 +71,8 @@ fun SettingsScreen(
         }
         Text("Prozirnost mehura preko mape", color = TextPrimary)
         Slider(value = overlayAlpha, onValueChange = onOverlayAlphaChange, valueRange = 0.3f..1f)
+        OutlinedButton(onClick = onOpenAppSettings, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Dozvole aplikacije") }
+        OutlinedButton(onClick = onOpenOverlaySettings, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Dozvoli mehur preko mape") }
         Text("Slušanje počinje dodirom mikrofona ili mehura. Aktivacija ključnom rečju i automatsko pokretanje preko Bluetooth-a nisu uključeni u ovu verziju.", color = TextSecondary)
         Spacer(Modifier.height(16.dp))
     }

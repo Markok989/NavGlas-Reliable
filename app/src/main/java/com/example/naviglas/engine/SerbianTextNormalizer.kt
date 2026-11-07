@@ -99,7 +99,8 @@ object SerbianTextNormalizer {
             result = result.replace(Regex("\\b$num\\b"), word)
         }
 
-        // Konvertujemo u ćirilicu za Google TTS jer Google sr-RS sintetizuje ćirilicu sa savršenom ljudskom intonacijom
+        // Ujednačavamo pismo za podešeni srpski TTS glas.
         return latinToCyrillic(result)
     }
 }
+

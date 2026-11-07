@@ -126,7 +126,7 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { fail("Mikrofon nije dozvoljen."); return }
         if (recognizer == null) { fail("Prepoznavanje govora nije dostupno na telefonu."); return }
         try {
-            audio.requestAudioFocus { handler.post { cancel() } }
+            if (!audio.requestAudioFocus { handler.post { cancel() } }) { fail("Zvuk trenutno nije dostupan. Pokušajte ponovo."); return }
             recognitionActive = true
             currentState = if (conversation.awaitingInput) AssistantState.WAITING_FOR_CONFIRMATION else AssistantState.LISTENING
             recognizer?.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -142,7 +142,7 @@ class VoiceEngineManager(private val context: Context, private val callback: Voi
         callback.onFeedback(text)
         if (!ttsReady) { queuedSpeech = text; callback.onError("Glas se priprema. Ako ne progovori, proverite srpski TTS glas."); return }
         try {
-            audio.requestAudioFocus { handler.post { cancel() } }
+            if (!audio.requestAudioFocus { handler.post { cancel() } }) { fail("Zvuk trenutno nije dostupan. Pokušajte ponovo."); return }
             val id = (++speechId).toString()
             currentState = AssistantState.SPEAKING
             if (tts?.speak(SerbianTextNormalizer.prepareForTts(text), TextToSpeech.QUEUE_FLUSH, Bundle(), id) == TextToSpeech.ERROR) fail("Govorni izlaz nije uspeo.")

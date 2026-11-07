@@ -107,17 +107,12 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
                 Manifest.permission.CALL_PHONE,
                 Manifest.permission.SEND_SMS,
                 Manifest.permission.RECEIVE_SMS,
-                Manifest.permission.READ_SMS,
                 Manifest.permission.READ_PHONE_STATE,
-                Manifest.permission.READ_CALL_LOG,
                 Manifest.permission.ANSWER_PHONE_CALLS,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
                 Manifest.permission.ACCESS_FINE_LOCATION
             )
             if (Build.VERSION.SDK_INT >= 33) list.add(Manifest.permission.POST_NOTIFICATIONS)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                list.add(Manifest.permission.BLUETOOTH_CONNECT)
-            }
             return list.toTypedArray()
         }
 
@@ -158,6 +153,7 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
 
         if (intent?.getBooleanExtra("EXTRA_TRIGGER_MIC", false) == true) {
             pendingMicTrigger = true
+            intent.removeExtra("EXTRA_TRIGGER_MIC")
         }
 
         loadTriggerApps()
@@ -240,6 +236,8 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
                                 voiceEngineManager?.updateTtsSettings(speechRate, pitch)
                                 voiceEngineManager?.speak(sampleText)
                             },
+                            onOpenAppSettings = { openAppSettingsPage() },
+                            onOpenOverlaySettings = { requestOverlayPermission() },
                             onOpenSystemTtsSettings = {
                                 try {
                                     val intent = Intent("com.android.settings.TTS_SETTINGS")
@@ -311,6 +309,7 @@ class MainActivity : ComponentActivity(), VoiceEngineCallback {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.getBooleanExtra("EXTRA_TRIGGER_MIC", false)) {
+            intent.removeExtra("EXTRA_TRIGGER_MIC")
             if (serviceConnected) voiceEngineManager?.startListening() else pendingMicTrigger = true
         }
     }
